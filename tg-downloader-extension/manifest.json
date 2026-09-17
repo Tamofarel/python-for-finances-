@@ -1,0 +1,64 @@
+{
+  "manifest_version": 3,
+  "name": "TG Downloader Pro",
+  "version": "1.0.0",
+  "description": "Download videos, audio, images, and documents from Telegram Web without restrictions",
+  "author": "TG Downloader Pro",
+  
+  "permissions": [
+    "downloads",
+    "storage",
+    "activeTab",
+    "scripting"
+  ],
+  
+  "host_permissions": [
+    "https://web.telegram.org/*",
+    "https://*.telegram.org/*"
+  ],
+  
+  "action": {
+    "default_popup": "popup/popup.html",
+    "default_icon": {
+      "16": "icons/icon16.svg",
+      "48": "icons/icon48.svg",
+      "128": "icons/icon128.svg"
+    }
+  },
+  
+  "icons": {
+    "16": "icons/icon16.svg",
+    "48": "icons/icon48.svg",
+    "128": "icons/icon128.svg"
+  },
+  
+  "background": {
+    "service_worker": "background/service-worker.js",
+    "type": "module"
+  },
+  
+  "content_scripts": [
+    {
+      "matches": [
+        "https://web.telegram.org/*",
+        "https://*.telegram.org/*"
+      ],
+      "js": [
+        "lib/download-manager.js",
+        "content/detector.js",
+        "content/content.js"
+      ],
+      "css": [
+        "content/styles.css"
+      ],
+      "run_at": "document_idle"
+    }
+  ],
+  
+  "web_accessible_resources": [
+    {
+      "resources": ["icons/*"],
+      "matches": ["https://web.telegram.org/*", "https://*.telegram.org/*"]
+    }
+  ]
+}

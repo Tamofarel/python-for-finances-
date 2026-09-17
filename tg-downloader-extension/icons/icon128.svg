@@ -1,0 +1,16 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 128 128" width="128" height="128">
+  <defs>
+    <linearGradient id="grad" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" style="stop-color:#667eea"/>
+      <stop offset="100%" style="stop-color:#764ba2"/>
+    </linearGradient>
+  </defs>
+  <rect width="128" height="128" rx="24" fill="url(#grad)"/>
+  <g fill="white">
+    <!-- Paper plane -->
+    <path d="M28 64L60 50L95 28L65 60L55 95L28 64Z" opacity="0.9"/>
+    <!-- Download arrow -->
+    <path d="M80 55L80 75L70 75L85 95L100 75L90 75L90 55Z"/>
+    <rect x="70" y="98" width="30" height="6" rx="2"/>
+  </g>
+</svg>
