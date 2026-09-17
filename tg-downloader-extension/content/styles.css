@@ -1,0 +1,261 @@
+/* TG Downloader Pro - Content Styles */
+
+/* Download button container */
+.tg-dl-btn-container {
+  position: absolute;
+  top: 8px;
+  right: 8px;
+  z-index: 1000;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  opacity: 0;
+  transition: opacity 0.2s ease;
+}
+
+/* Show on hover */
+*:hover > .tg-dl-btn-container,
+.tg-dl-btn-container:hover {
+  opacity: 1;
+}
+
+/* Main download button */
+.tg-dl-btn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 36px;
+  height: 36px;
+  padding: 0;
+  border: none;
+  border-radius: 50%;
+  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+  color: white;
+  cursor: pointer;
+  box-shadow: 0 4px 15px rgba(102, 126, 234, 0.4);
+  transition: all 0.3s ease;
+}
+
+.tg-dl-btn:hover {
+  transform: scale(1.1);
+  box-shadow: 0 6px 20px rgba(102, 126, 234, 0.6);
+}
+
+.tg-dl-btn:active {
+  transform: scale(0.95);
+}
+
+.tg-dl-btn:disabled {
+  opacity: 0.7;
+  cursor: not-allowed;
+}
+
+/* Loading state */
+.tg-dl-loading .tg-dl-spin {
+  animation: tg-dl-spin 1s linear infinite;
+}
+
+@keyframes tg-dl-spin {
+  from { transform: rotate(0deg); }
+  to { transform: rotate(360deg); }
+}
+
+/* Success state */
+.tg-dl-success {
+  background: linear-gradient(135deg, #11998e 0%, #38ef7d 100%);
+}
+
+/* Error state */
+.tg-dl-error {
+  background: linear-gradient(135deg, #eb3349 0%, #f45c43 100%);
+}
+
+/* Selected state for batch */
+.tg-dl-selected {
+  position: relative;
+}
+
+.tg-dl-selected::after {
+  content: '✓';
+  position: absolute;
+  top: -5px;
+  right: -5px;
+  width: 18px;
+  height: 18px;
+  background: #38ef7d;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 11px;
+  color: white;
+  font-weight: bold;
+}
+
+.tg-dl-selected .tg-dl-btn {
+  background: linear-gradient(135deg, #11998e 0%, #38ef7d 100%);
+}
+
+/* Quality badge */
+.tg-dl-quality {
+  padding: 2px 6px;
+  background: rgba(0, 0, 0, 0.7);
+  color: white;
+  font-size: 10px;
+  font-weight: 600;
+  border-radius: 4px;
+  backdrop-filter: blur(4px);
+}
+
+/* Media viewer button */
+.tg-dl-viewer-btn {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 10px 20px;
+  border: none;
+  border-radius: 24px;
+  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+  color: white;
+  font-size: 14px;
+  font-weight: 600;
+  cursor: pointer;
+  box-shadow: 0 4px 20px rgba(102, 126, 234, 0.5);
+  transition: all 0.3s ease;
+  position: fixed;
+  bottom: 100px;
+  right: 20px;
+  z-index: 10000;
+}
+
+.tg-dl-viewer-btn:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 8px 30px rgba(102, 126, 234, 0.7);
+}
+
+.tg-dl-viewer-btn .tg-dl-quality {
+  background: rgba(255, 255, 255, 0.2);
+  margin-left: 4px;
+}
+
+/* Batch counter / floating action */
+.tg-dl-batch-counter {
+  position: fixed;
+  bottom: 20px;
+  left: 50%;
+  transform: translateX(-50%);
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 12px 20px;
+  background: rgba(20, 20, 30, 0.95);
+  border-radius: 30px;
+  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.4);
+  backdrop-filter: blur(10px);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  z-index: 100000;
+  animation: tg-dl-slide-up 0.3s ease;
+}
+
+@keyframes tg-dl-slide-up {
+  from {
+    transform: translateX(-50%) translateY(100px);
+    opacity: 0;
+  }
+  to {
+    transform: translateX(-50%) translateY(0);
+    opacity: 1;
+  }
+}
+
+.tg-dl-batch-btn {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 10px 24px;
+  border: none;
+  border-radius: 20px;
+  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+  color: white;
+  font-size: 14px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.3s ease;
+}
+
+.tg-dl-batch-btn:hover {
+  background: linear-gradient(135deg, #764ba2 0%, #667eea 100%);
+  transform: scale(1.02);
+}
+
+.tg-dl-batch-btn:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+
+.tg-dl-batch-clear {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 32px;
+  height: 32px;
+  padding: 0;
+  border: none;
+  border-radius: 50%;
+  background: rgba(255, 255, 255, 0.1);
+  color: #888;
+  font-size: 16px;
+  cursor: pointer;
+  transition: all 0.3s ease;
+}
+
+.tg-dl-batch-clear:hover {
+  background: rgba(235, 51, 73, 0.3);
+  color: #eb3349;
+}
+
+/* Notification */
+.tg-dl-notification {
+  position: fixed;
+  top: 20px;
+  right: 20px;
+  padding: 14px 24px;
+  background: rgba(20, 20, 30, 0.95);
+  color: white;
+  border-radius: 12px;
+  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.3);
+  backdrop-filter: blur(10px);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  z-index: 100001;
+  transform: translateX(120%);
+  transition: transform 0.3s ease;
+  font-size: 14px;
+  font-weight: 500;
+}
+
+.tg-dl-notification-show {
+  transform: translateX(0);
+}
+
+.tg-dl-notification-success {
+  border-left: 4px solid #38ef7d;
+}
+
+.tg-dl-notification-error {
+  border-left: 4px solid #eb3349;
+}
+
+.tg-dl-notification-info {
+  border-left: 4px solid #667eea;
+}
+
+/* Progress indicator on button */
+.tg-dl-progress {
+  position: absolute;
+  bottom: 0;
+  left: 0;
+  height: 3px;
+  background: linear-gradient(90deg, #38ef7d, #11998e);
+  border-radius: 2px;
+  transition: width 0.2s ease;
+}
