@@ -19,6 +19,12 @@ const TOOL_LABELS: Record<string, string> = {
   run_project_command: "Command",
   home_status: "Smart home",
   home_control: "Smart home",
+  word_document: "Word",
+  activity_today: "Activity",
+};
+
+const WORD_ACTIONS: Record<string, string> = {
+  create: "Write and save", open: "Open", read: "Read", status: "Check Word",
 };
 
 const STATUS_TEXT: Record<ActionStatus, string> = {
@@ -80,6 +86,13 @@ export function describeCall(a: ActionRecord): string {
       return str(g.action).replace(/_/g, " ");
     case "run_project_command":
       return `Run ${Array.isArray(g.argv) ? g.argv.join(" ") : ""}`;
+    case "word_document": {
+      const what = WORD_ACTIONS[str(g.action)] ?? str(g.action);
+      const name = str(g.filename) || str(g.title);
+      return name ? `${what} “${name}”` : what;
+    }
+    case "activity_today":
+      return "Read today's records";
     case "home_status":
       return `Check ${str(g.entity_id)}`;
     case "home_control":

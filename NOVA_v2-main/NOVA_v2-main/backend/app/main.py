@@ -22,9 +22,11 @@ from app.db.session import Database
 from app.models import Message, Task, Workflow, utcnow
 from app.providers.registry import ProviderRegistry, build_registry
 from app.research import ResearchProvider, build_research
+from app.services.activity import activity_tools
 from app.services.auth import user_count
 from app.tools.browser import BrowserAdapter
 from app.tools.commands import CommandRunner
+from app.tools.documents import WordDocuments, document_tools
 from app.tools.home_assistant import HomeAssistant, home_tools, parse_entities
 from app.tools.registry import ToolRegistry
 from app.tools.spotify import SpotifyService
@@ -69,6 +71,9 @@ def create_app(
                       browser_hosts=settings.browser_allowed_hosts,
                       browser=browser if browser.available else None,
                       allowlisted_commands=settings.allowlisted_commands)
+        + document_tools(settings.desktop_control_enabled,
+                         WordDocuments(settings.documents_dir or Path.home() / "Documents" / "NOVA"))
+        + activity_tools(lambda: db.SessionLocal())
         + home_tools(home)
     )
     state = AppState(

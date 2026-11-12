@@ -9,6 +9,9 @@ Details: [docs/ACTIONS.md](docs/ACTIONS.md#spotify).
   The Spotify desktop app answered 204 to a plain track request and left the player empty, and an idle device ignored
   play requests. NOVA now transfers playback to an idle device first, starts the track inside its album, and falls
   back to the plain request once.
+- **“Open Word and report what we did today” only opened Word.** No tool could write a document, and one succeeded
+  action ended the request. NOVA now reads today's records, writes and saves a Word document, reads the saved file
+  back, shows it in Word and reports the file's location. Details: [docs/ACTIONS.md](docs/ACTIONS.md#word-documents-and-multi-step-tasks).
 
 ### Changed
 - Spotify playback no longer needs `NOVA_DESKTOP_CONTROL_ENABLED`. With desktop control off, NOVA uses the Spotify
@@ -17,6 +20,10 @@ Details: [docs/ACTIONS.md](docs/ACTIONS.md#spotify).
 - A failed confirmation now says what Spotify reported (nothing playing, or another track).
 
 ### Added
+- `word_document` tool (create, open, read, status) and `activity_today` tool. New dependency: `python-docx`.
+- Multi-step task plans and a `task` stream event with `TASK_IN_PROGRESS`, `TASK_COMPLETED`,
+  `TASK_PARTIALLY_COMPLETED` and `TASK_FAILED`; succeeded actions carry `completion: "ACTION_COMPLETED"`.
+- `NOVA_DOCUMENTS_DIR`: the folder for Word documents (default `Documents\NOVA`).
 - `spotify_control` action `now_playing` (“what song is currently playing?”).
 - `data.outcome` on Spotify results (`SUCCESS`, `VERIFICATION_TIMEOUT`, `PLAYBACK_FAILED`, `NO_DEVICE`, …).
 - Direct routing of unmistakable Spotify requests (controls, “play *title* by *artist*”, “play my *name* playlist”).

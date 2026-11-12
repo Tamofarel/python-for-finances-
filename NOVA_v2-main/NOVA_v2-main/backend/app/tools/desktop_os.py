@@ -104,6 +104,30 @@ def running_processes() -> set[str]:
     return names
 
 
+def window_titles() -> list[str]:
+    """Titles of the visible top-level windows (empty when not on Windows). Read-only: nothing is focused or moved."""
+    if sys.platform != "win32":
+        return []
+    import ctypes
+    from ctypes import wintypes
+
+    user32 = ctypes.windll.user32
+    titles: list[str] = []
+
+    @ctypes.WINFUNCTYPE(wintypes.BOOL, wintypes.HWND, wintypes.LPARAM)
+    def collect(hwnd: int, _lparam: int) -> bool:
+        if user32.IsWindowVisible(hwnd):
+            length = user32.GetWindowTextLengthW(hwnd)
+            if length:
+                buffer = ctypes.create_unicode_buffer(length + 1)
+                user32.GetWindowTextW(hwnd, buffer, length + 1)
+                titles.append(buffer.value)
+        return True
+
+    user32.EnumWindows(collect, 0)
+    return titles
+
+
 def send_media_key(name: str) -> bool:
     vk = MEDIA_KEYS.get(name)
     if vk is None or sys.platform != "win32":

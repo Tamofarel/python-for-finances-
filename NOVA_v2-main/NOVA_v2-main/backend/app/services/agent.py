@@ -20,6 +20,7 @@ import threading
 import time
 from collections import Counter
 from collections.abc import AsyncIterator, Awaitable, Callable
+from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
@@ -31,9 +32,11 @@ from app.providers.base import AIProvider, ChatMessage, ProviderFailure, ToolCal
 from app.services import audit
 from app.services.assistant import get_setting, untrusted
 from app.services.intent import (
+    document_task,
     grounded,
     looks_like_action,
     looks_like_tool_json,
+    needs_document,
     normalize,
     resolve_choice,
     spotify_request,
@@ -57,6 +60,9 @@ You can act on this computer and connected devices only by calling the tools pro
 - When the user asks for something a tool can do, call the tool instead of explaining how to do it manually.
   Give manual instructions only if the user asks for them or no tool can do it.
 - One request may need several steps; spotify_control play_track opens Spotify by itself when needed.
+- Opening an app is one step, not the task. When the user wants something written, reported or saved in Word,
+  call word_document (action "create", with the complete text as content); open_app writes nothing.
+  For what was done today, call activity_today first and write its report.
 - After a tool result, answer in one or two short sentences based only on that result. Say an action worked
   only when its status is "succeeded". "unverified": say it could not be confirmed. "needs_input": ask the user
   to choose. "needs_authorization": say which account to connect. "awaiting_approval": say it waits for their
@@ -69,6 +75,26 @@ You can act on this computer and connected devices only by calling the tools pro
 NOT_A_REQUEST_RULES = """Actions:
 NOVA can act through tools (Spotify, approved apps, websites, devices) when the user directly asks it to do
 something. This message is not a request to act, so answer it in words and do not claim to have done anything."""
+
+# Sent to the model once when it stops although the document the owner asked for does not exist yet.
+DOCUMENT_NUDGE = ("The task is not finished. The user asked for this to be written in a Word document and no document "
+                  "exists yet: opening Word does not create one. Call word_document now with action \"create\", a "
+                  "title, and the complete text as content (lines starting with # are headings, - are list items). "
+                  "Do not answer in words.")
+NO_DOCUMENT_NOTE = ("Task partially completed: no Word document was created or saved. Opening Word was only the first "
+                    "step; ask again and I will write it with the Word document tool.")
+# Statuses that leave a task open until the owner acts.
+WAITING_STATUSES = {"needs_input", "needs_authorization", "awaiting_approval"}
+
+
+@dataclass(frozen=True)
+class PlanStep:
+    """One step of a multi-step task. `arguments` builds the call from the results of the steps before it."""
+
+    label: str
+    tool: str
+    arguments: Callable[[list[ToolResult]], dict[str, Any]]
+
 
 # Statuses after which a short follow-up ("the first one", "try again") continues the same request.
 FOLLOW_UP_STATUSES = {"needs_input", "needs_authorization", "unverified", "unavailable", "failed", "timed_out"}
@@ -147,6 +173,109 @@ class Agent:
         self.is_disconnected = is_disconnected
         self.deadline = time.monotonic() + REQUEST_DEADLINE_S
         self.actions: list[dict[str, Any]] = []
+        self.task: dict[str, Any] | None = None  # the outcome of the whole request, set when it ends
+
+    # ---- multi-step tasks ---------------------------------------------------------------------------------
+    def plan(self) -> list[PlanStep] | None:
+        """The steps of a request NOVA knows how to carry out from start to finish, or None (the model decides).
+
+        Known task: a written report of today's activity in Word. Its facts come from NOVA's records and the
+        result is the verified file, so no step depends on the model remembering to do it.
+        """
+        if not self.request_text or self.pending_choice or document_task(self.request_text) != "today_report":
+            return None
+        if any(not (tool := self.registry.get(name)) or not tool.enabled for name in ("activity_today", "word_document")):
+            return None  # the model path explains what is unavailable and why
+        return [
+            PlanStep("read today's records", "activity_today", lambda _results: {}),
+            PlanStep("write and save the Word document", "word_document", lambda results: {
+                "action": "create", "title": results[0].data["title"], "content": results[0].data["report"],
+                "filename": f"NOVA activity report {results[0].data['date']}", "open_in_word": False}),
+            PlanStep("show the document in Word", "word_document", lambda results: {
+                "action": "open", "filename": results[1].data["filename"]}),
+        ]
+
+    async def run_plan(self, steps: list[PlanStep]) -> AsyncIterator[tuple[str, dict]]:
+        """Run the steps in order through the normal validation, permission, audit and cancellation path.
+
+        A step runs only if every step before it succeeded, and receives their results. The task is complete only
+        when every step succeeded; otherwise the reply says exactly which steps were done and which were not.
+        """
+        self._executed = 0
+        self._seen = Counter()
+        results: list[ToolResult] = []
+        log.info("task planned", extra={"extra_data": {"steps": [s.tool for s in steps]}})
+        yield "task", self._task_state(steps, results, final=False)
+        for number, step in enumerate(steps):
+            produced: list[ToolResult] = []
+            call = ToolCall(f"plan-{number}", step.tool, step.arguments(results))
+            async for event in self._run_call(call, [], produced):
+                yield event
+            results.append(produced[0] if produced else ToolResult(
+                "denied", "This step was refused because the request did not ask for it.", {"reason": "not_requested"}, 0))
+            if results[-1].status != "succeeded" or (self.is_disconnected and await self.is_disconnected()):
+                break
+            if number + 1 < len(steps):
+                yield "task", self._task_state(steps, results, final=False)
+        self.task = self._task_state(steps, results, final=True)
+        log.info("task finished", extra={"extra_data": {"status": self.task["status"]}})
+        yield "task", self.task
+        done = [r.message for r in results if r.status == "succeeded"]
+        text = " ".join(done)
+        if self.task["status"] != "TASK_COMPLETED":
+            failed = steps[len(results) - 1]
+            later = [s.label for s in steps[len(results):]]
+            text = ("Task partially completed. " if done else "Task failed. ") + text
+            text += f"{' ' if done else ''}Not done: {failed.label}. {results[-1].message}"
+            if later:
+                text += " Not attempted: " + "; ".join(later) + "."
+        yield "delta", {"text": text}
+
+    @staticmethod
+    def _task_state(steps: list[PlanStep], results: list[ToolResult], *, final: bool) -> dict[str, Any]:
+        states = []
+        for index, step in enumerate(steps):
+            if index >= len(results):
+                state = "NOT_ATTEMPTED" if final else "PENDING"
+            else:
+                state = "ACTION_COMPLETED" if results[index].status == "succeeded" else "ACTION_FAILED"
+            states.append({"step": step.label, "tool": step.tool, "state": state})
+        succeeded = sum(1 for r in results if r.status == "succeeded")
+        if not final:
+            status = "TASK_IN_PROGRESS"
+        elif succeeded == len(steps):
+            status = "TASK_COMPLETED"
+        else:
+            status = "TASK_PARTIALLY_COMPLETED" if succeeded else "TASK_FAILED"
+        return {"status": status, "steps": states}
+
+    def _missing_document(self) -> bool:
+        """The owner asked for a Word document, the tool is available, and no call to it has succeeded or is waiting."""
+        if not self.request_text or not needs_document(f"{self.follow_up_of or ''} {self.request_text}"):
+            return False
+        tool = self.registry.get("word_document")
+        if tool is None or not tool.enabled:
+            return False
+        return not any(a.get("tool") == "word_document" and a.get("phase") == "finished" for a in self.actions)
+
+    def _conclude(self) -> dict[str, Any] | None:
+        """The outcome of a model-driven or direct request: one succeeded action does not make the task complete."""
+        finished = [a for a in self.actions if a.get("phase") == "finished"]
+        missing = self._missing_document()
+        if not finished and not missing:
+            return None  # an ordinary answer in words: there was no task
+        succeeded = [a for a in finished if a.get("status") == "succeeded"]
+        if any(a.get("status") in WAITING_STATUSES for a in finished):
+            status = "TASK_IN_PROGRESS"
+        elif len(succeeded) == len(finished) and not missing:
+            status = "TASK_COMPLETED"
+        else:
+            status = "TASK_PARTIALLY_COMPLETED" if succeeded else "TASK_FAILED"
+        steps = [{"step": a.get("tool"), "tool": a.get("tool"),
+                  "state": "ACTION_COMPLETED" if a.get("status") == "succeeded" else "ACTION_FAILED"} for a in finished]
+        if missing:
+            steps.append({"step": "write and save the Word document", "tool": "word_document", "state": "NOT_ATTEMPTED"})
+        return {"status": status, "steps": steps}
 
     def deterministic_call(self) -> ToolCall | None:
         """Route a few exact, low-risk phrases without a model round trip."""
@@ -185,6 +314,9 @@ class Agent:
             yield event
         log.info("intent completed", extra={"extra_data": {"tool": call.name,
                                                               "duration_ms": round((time.monotonic() - started) * 1000)}})
+        self.task = self._conclude()
+        if self.task is not None:
+            yield "task", self.task
         if self.actions:
             yield "delta", {"text": self._report()}
 
@@ -219,7 +351,16 @@ class Agent:
 
     # ---- the loop -----------------------------------------------------------------------------------------
     async def run(self, history: list[ChatMessage], system: str, tools: list[ToolSpec]) -> AsyncIterator[tuple[str, dict]]:
-        """Yields ("delta", {"text"}) and ("action", record) events. Raises ProviderFailure on model errors."""
+        """Yields ("delta", {"text"}), ("action", record) and a final ("task", outcome) event when NOVA acted.
+        Raises ProviderFailure on model errors."""
+        async for event in self._run_model(history, system, tools):
+            yield event
+        self.task = self._conclude()
+        if self.task is not None:
+            yield "task", self.task
+
+    async def _run_model(self, history: list[ChatMessage], system: str,
+                         tools: list[ToolSpec]) -> AsyncIterator[tuple[str, dict]]:
         self._executed = 0
         self._seen: Counter[str] = Counter()
         choice = self._chosen_call()
@@ -232,6 +373,7 @@ class Agent:
         messages = list(history)
         names = {t.name for t in tools}
         spoke = False
+        nudged = False
         for _round in range(MAX_ROUNDS):
             text: list[str] = []
             held: list[str] = []
@@ -265,6 +407,21 @@ class Agent:
                 written = text_tool_call("".join(held), names)  # a tool call the model wrote out as text
                 if written is not None:
                     calls, held = [written], []
+            if not calls and self._missing_document():
+                # The model stopped (typically after opening Word) although the document it was asked for does not
+                # exist. One success is not the task: say so once, then report honestly if it still does not act.
+                if not nudged and "word_document" in names:
+                    nudged = True
+                    log.info("task incomplete, model asked to continue", extra={"extra_data": {"missing": "word_document"}})
+                    messages.append(ChatMessage("assistant", "".join(text) or "(no reply)"))
+                    messages.append(ChatMessage("user", DOCUMENT_NUDGE))
+                    continue  # text held back in this round is dropped: it describes work that was not done
+                written = "".join(held).strip()
+                if written and not looks_like_tool_json(written):
+                    yield "delta", {"text": "".join(held)}
+                    spoke = True
+                yield "delta", {"text": ("\n\n" if spoke else "") + NO_DOCUMENT_NOTE}
+                return
             if not calls:
                 final = "".join(held).strip()
                 if final and looks_like_tool_json(final):
@@ -325,6 +482,8 @@ class Agent:
         done = {**record, "phase": "finished", "status": result.status, "message": result.message,
                 "verified": bool(result.data.get("verified", False)), "data": _public(result.data),
                 "duration_ms": result.duration_ms}
+        if result.status == "succeeded":
+            done["completion"] = "ACTION_COMPLETED"  # this one action; the task's outcome is the "task" event
         self.actions.append(done)
         yield "action", done
         messages.append(ChatMessage("tool", json.dumps(_for_model(result), ensure_ascii=False),
@@ -444,7 +603,9 @@ class Agent:
 
 
 _PUBLIC_KEYS = ("verified", "blocker", "connect_url", "candidates", "action_id", "device", "track", "playlist",
-                "artist", "fallback", "note", "reason", "url", "http_status", "outcome", "is_playing")
+                "artist", "fallback", "note", "reason", "url", "http_status", "outcome", "is_playing",
+                "path", "filename", "folder", "opened", "report", "requests", "actions", "installed", "running",
+                "windows", "documents")
 
 
 def _model_can_continue(result: ToolResult) -> bool:

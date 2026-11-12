@@ -81,6 +81,8 @@ class Settings(BaseSettings):
     spotify_client_id: str = ""
     # Extra approved apps: "name=C:\\path\\App.exe|app.exe|alias1,alias2;name=uri-scheme:|process.exe".
     desktop_apps: str = ""
+    # Folder where NOVA creates, reads and opens Word documents. Default: Documents\NOVA in the user's profile.
+    documents_dir: Path | None = None
     # Websites open_website may open (a host also allows its subdomains). Comma-separated.
     browser_allowed_hosts: str = DEFAULT_BROWSER_HOSTS
 

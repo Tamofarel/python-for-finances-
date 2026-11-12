@@ -5,9 +5,11 @@ from __future__ import annotations
 import pytest
 
 from app.services.intent import (
+    document_task,
     grounded,
     looks_like_action,
     looks_like_tool_json,
+    needs_document,
     resolve_choice,
     spotify_request,
     text_tool_call,
@@ -103,6 +105,23 @@ def test_unmistakable_spotify_requests_map_to_valid_grounded_spotify_calls(said,
 ])
 def test_other_requests_are_left_to_the_model(said):
     assert spotify_request(said) is None
+
+
+@pytest.mark.parametrize(("said", "task", "document"), [
+    ("open microsoft office word  and report what we did today ?", "today_report", True),
+    ("Can you open Word and report what we did today?", "today_report", True),
+    ("Write a summary of today in a Word document", "today_report", True),
+    ("Ouvre Word et fais le rapport de ce qu'on a fait aujourd'hui", "today_report", True),
+    ("Open Word and write a letter to my landlord", None, True),  # a document, but the model writes its text
+    ("Open Word", None, False),  # opening the app is the whole request
+    ("What did we do today?", None, False),  # a question, answered in words
+    ("Open the calculator", None, False),
+])
+def test_requests_for_a_written_document_are_told_apart_from_opening_an_app(said, task, document):
+    assert document_task(said) == task
+    assert needs_document(said) is document
+    if document:
+        assert looks_like_action(said) and grounded("word_document", {"action": "create"}, said)
 
 
 def test_now_playing_takes_no_query_and_common_spellings_are_normalised():

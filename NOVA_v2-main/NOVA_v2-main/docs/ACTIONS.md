@@ -93,6 +93,8 @@ Larger models (mistral 7B, or Claude) need these less, but they are harmless wit
 | Tool | Does | Risk | Verification |
 |---|---|---|---|
 | `spotify_control` | Open Spotify; play a track, playlist or artist; pause, resume, next, previous, volume; say what is playing | reversible | Spotify's reported player state: the requested item playing, paused, new track, volume |
+| `word_document` | Write, save and verify a Word document; open or read one; check Word's state | reversible (replace: safety-critical; read/status: observe) | The saved file is read back and compared; a Word window shows the document |
+| `activity_today` | Read today's requests and actions from NOVA's records | observe | Read directly from the database |
 | `open_app` | Open an approved app. Defaults: Spotify, Calculator, Settings, Notepad/Notes, File Explorer, Microsoft Word/Word/MS Word, VS Code/Visual Studio Code; add aliases and apps with `NOVA_DESKTOP_APPS` | reversible | The app's process appears when it has a detectable process |
 | `open_website` | Open an http(s) page on an allowed host in your default browser | reversible | Not verifiable (Windows opens the browser) |
 | `open_file` | Open a document, image or media file from the conversation's project | reversible | Not verifiable |
@@ -174,6 +176,53 @@ Anything else is left to the model, as before.
 | Rate limited | One retry if Spotify asks to wait ≤ 3 s; otherwise reported. |
 | Accepted but not confirmed | **Not confirmed**, never “playing”. |
 | Not connected, for pause/next/volume | With desktop control on: sends the Windows media key instead and says it can't confirm. With it off: asks you to connect. |
+
+## Word documents and multi-step tasks
+
+**Why “open Word and report what we did today” only opened Word** (found 2026-11-12 in the stored conversation):
+the model called `open_app("word")`, the tool succeeded and was verified, and the model then wrote its summary in
+the chat. Three things were missing:
+
+1. **No tool could write a document.** `open_app` starts an application and does nothing inside it.
+2. **Nothing compared the result with the request.** Tool chaining already worked (the model may call several tools
+   in a row), but once the model stopped, one succeeded action was the end of the request.
+3. **“What we did today” had no source of facts.** The model summarised from the conversation it could see.
+
+**What exists now**
+
+| Piece | Where | Role |
+|---|---|---|
+| `word_document` | `tools/documents.py` | `create` (write text with headings, lists, tables and bold into a new .docx, save it, read the saved file back, show it in Word), `open`, `read`, `status`. |
+| `activity_today` | `services/activity.py` | Today's requests and NOVA's actions with their real results, from the database. No model writes it. |
+| Task plan | `Agent.plan` / `Agent.run_plan` | Known multi-step tasks run step by step through the normal validation, permission, audit and cancellation path. Each step receives the results of the steps before it and runs only if they succeeded. |
+| Task outcome | `task` stream event | `TASK_IN_PROGRESS`, `TASK_COMPLETED`, `TASK_PARTIALLY_COMPLETED`, `TASK_FAILED`, with each step as `ACTION_COMPLETED`, `ACTION_FAILED`, `PENDING` or `NOT_ATTEMPTED`. A succeeded action record carries `completion: "ACTION_COMPLETED"`. |
+| Completion check | `Agent._missing_document` | When the request asks for something written in Word and the model stops without a `word_document` call, NOVA tells it once that the task is not finished. If it still does not act, the reply says that no document was created. |
+
+“Open Word and report what we did today” is a planned task: read today's records → write and save
+`NOVA activity report <date>.docx` → show it in Word. The reply gives the file's location. Other writing requests
+(“open Word and write a letter to…”) go through the model, which must call `word_document` with the text.
+
+**How Word is driven.** NOVA writes the .docx file with python-docx and opens it in Word. It does not type into
+Word's window and does not use COM automation (`pywin32`). The file is the result you asked for, it can be read
+back and compared with the request, and it does not depend on which window has the focus or on a dialog being open.
+What NOVA confirms about Word itself is that a Word window shows the document. COM would add editing of a document
+that is already open in Word; that is not implemented.
+
+**Boundaries**
+
+- Documents are created, read and opened only in one folder: `NOVA_DOCUMENTS_DIR`, by default `Documents\NOVA`.
+  File names with folders, drive letters or `..` are refused.
+- An existing file is never replaced silently. By default the new document gets a new name (`Report (2).docx`).
+  `if_exists: "replace"` is safety-critical: it waits for your approval on screen.
+- “Saved” is reported only after the saved file was read back and contains the text. A failed save, a permission
+  error or a failed check is reported as a failure.
+- `word_document` needs `NOVA_DESKTOP_CONTROL_ENABLED=true`. `activity_today` only reads NOVA's own database and is
+  always available.
+
+**Adding another application.** An integration follows `ApplicationAdapter` in `tools/documents.py`: `available()`,
+`state()`, and typed actions returning `(status, message, data)` where `succeeded` means the outcome was checked.
+Register its tools in `app/main.py`. `SpotifyService` and `BrowserAdapter` already have this shape. Excel and
+PowerPoint are not implemented.
 
 ## Smart home and physical devices (Home Assistant)
 
@@ -271,6 +320,7 @@ not implemented.
 |---|---|---|
 | `NOVA_DESKTOP_CONTROL_ENABLED` | `false` | Enables the Windows tools (apps, websites, files, project, media keys, project commands) and lets NOVA start the Spotify app. Spotify playback through your account works without it. |
 | `NOVA_SPOTIFY_CLIENT_ID` | *(empty)* | Your Spotify app's client ID (PKCE; no secret). |
+| `NOVA_DOCUMENTS_DIR` | `Documents\NOVA` | The only folder where `word_document` creates, reads and opens documents. |
 | `NOVA_DESKTOP_APPS` | *(empty)* | Extra apps: `name=C:\path\App.exe\|app.exe\|alias1,alias2;name=scheme:\|process.exe\|alias`. User-configured absolute executable/shortcut paths and registered URI schemes only; no shell or arbitrary arguments. |
 | `NOVA_BROWSER_ALLOWED_HOSTS` | localhost, 127.0.0.1, google.com, youtube.com, github.com, stackoverflow.com, wikipedia.org, developer.mozilla.org, docs.python.org, open.spotify.com | Hosts `open_website` may open (subdomains included). |
 | `NOVA_HOME_ASSISTANT_URL` / `_TOKEN` / `_ENTITIES` | *(empty)* | Home Assistant hub, long-lived token, and the devices NOVA may use. |
@@ -285,6 +335,8 @@ also works. **Settings → Capabilities → Actions** and **Settings → Actions
 | File | Covers |
 |---|---|
 | `tests/test_agent.py` | Model-driven tool choice through the chat API, invalid and unknown calls refused, approvals, failures reported as failures, premature claims hidden, honest replies, loop limits, choice resolution, text tool calls, emergency stop, cancellation, deadlines, audit without arguments. |
+| `tests/test_documents.py` | Creating, formatting, saving and reading back a real .docx; Word installed, missing, already running; window never appearing; existing files and approval to replace; save and permission failures; failed verification; file names that leave the folder; emergency stop. Windows and Word are fakes. |
+| `tests/test_agent.py` (tasks) | The Word report request end to end; partially completed and failed tasks; later steps not attempted; opening Word alone; a model that only opens Word is told to continue, and cannot claim the document exists. |
 | `tests/test_spotify.py` | Your exact request, ambiguity, swapped fields, misremembered title (with Spotify's real results), authorization, no device / app launch, Premium, unconfirmed playback, rate limits, 204 responses, cancellation, scopes. |
 | `tests/test_tools.py` | The registry: schema, risk, approval gating, deadlines, cancellation, pause, API authentication and CSRF, audit. |
 | `tests/test_desktop_tools.py` | Windows tools and the `UnboundLocalError` regression. |

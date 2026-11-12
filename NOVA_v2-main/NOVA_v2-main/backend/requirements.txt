@@ -11,3 +11,5 @@ anthropic==1.15.0
 python-multipart==0.0.20
 # Local wake phrase and basic offline transcription (US-English model included, no download)
 pocketsphinx==5.0.4
+# Word documents (.docx) written and read back by the word_document tool
+python-docx==1.2.0

@@ -177,6 +177,11 @@ def _stream_generation(state: AppState, user: User, conv_id: int, provider: AIPr
 
     async def events() -> AsyncIterator[tuple[str, dict]]:
         """The model with the enabled tools offered, or plain streaming when no tool can be offered."""
+        steps = agent.plan()
+        if steps is not None:
+            async for ev in agent.run_plan(steps):
+                yield ev
+            return
         direct = agent.deterministic_call()
         if direct is not None:
             async for ev in agent.run_direct(direct):

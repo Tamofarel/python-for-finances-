@@ -432,3 +432,175 @@ def test_imitated_calls_to_unknown_tools_are_never_shown_as_the_reply(authed, pr
     _, events = send(authed, "play the first one")
     assert '"name"' not in reply_of(events) and "play_track" not in reply_of(events)
     assert "couldn't" in reply_of(events).lower()
+
+
+# ---- multi-step tasks: one succeeded action is not the task -----------------------------------------------------
+WORD_REQUEST = "Open Microsoft Office Word and report what we did today."
+
+
+def tasks_of(events):
+    return [d for e, d in events if e == "task"]
+
+
+def install_office(authed, tmp_path, monkeypatch, fake=None, *extra: Tool):
+    """The real document and activity tools on a temporary folder, with Windows and Word replaced by fakes."""
+    from app.services.activity import activity_tools
+    from app.tools.documents import WordDocuments, document_tools
+    from tests.test_documents import FakeWindows
+
+    monkeypatch.setattr("app.tools.documents.sys.platform", "win32")
+    fake = fake or FakeWindows()
+    word = WordDocuments(tmp_path / "NOVA", launcher=fake.launch, processes=fake.processes, windows=fake.windows,
+                         resolver=fake.resolve, poll_interval=0.01)
+    install(authed, *document_tools(True, word), *activity_tools(lambda: authed.app.state.nova.db.SessionLocal()), *extra)
+    return fake
+
+
+def open_app_tool(recorder) -> Tool:
+    class AppInput(ToolInput):
+        app: str = Field(description="Approved application name or alias: microsoft word, word")
+
+    return Tool("open_app", "Open an approved app.", AppInput, PermissionLevel.ROUTINE, True, recorder)
+
+
+def test_word_report_request_is_carried_out_to_a_verified_saved_document(authed, provider, tmp_path, monkeypatch):
+    from docx import Document
+
+    fake = install_office(authed, tmp_path, monkeypatch)
+    provider.replies = ["Paris is the capital of France."]
+    send(authed, "What is the capital of France?")
+    _, events = send(authed, WORD_REQUEST)
+
+    finished = actions_of(events)
+    assert [(a["tool"], a["arguments"].get("action"), a["status"]) for a in finished] == [
+        ("activity_today", None, "succeeded"), ("word_document", "create", "succeeded"),
+        ("word_document", "open", "succeeded")]
+    assert all(a["completion"] == "ACTION_COMPLETED" and a["verified"] for a in finished)
+    # The task is in progress until the last step is verified; succeeded steps alone never complete it.
+    statuses = [t["status"] for t in tasks_of(events)]
+    assert statuses == ["TASK_IN_PROGRESS", "TASK_IN_PROGRESS", "TASK_IN_PROGRESS", "TASK_COMPLETED"]
+    assert [s["state"] for s in tasks_of(events)[1]["steps"]] == ["ACTION_COMPLETED", "PENDING", "PENDING"]
+
+    path = tmp_path / "NOVA" / f"NOVA activity report {time.strftime('%Y-%m-%d')}.docx"
+    assert finished[1]["data"]["path"] == str(path) and path.is_file()
+    text = "\n".join(p.text for p in Document(str(path)).paragraphs)
+    cells = [c.text for row in Document(str(path)).tables[0].rows for c in row.cells]
+    assert "NOVA activity report" in text and "1 request in 1 conversation" in text
+    assert "What is the capital of France?" in cells  # the earlier request, from NOVA's records
+    assert WORD_REQUEST not in cells  # the request being carried out is not part of the record yet
+    assert fake.launched == [str(path)]
+
+    reply = reply_of(events)
+    assert str(tmp_path / "NOVA") in reply and "checked that the saved file contains the text" in reply
+    assert "Opened" in reply and "in Word" in reply
+    assert len(provider.calls) == 1  # only the earlier question: the model writes neither the facts nor the result
+
+
+def test_document_saved_but_not_seen_in_word_is_a_partially_completed_task(authed, provider, tmp_path, monkeypatch):
+    from tests.test_documents import FakeWindows
+
+    install_office(authed, tmp_path, monkeypatch, FakeWindows(installed=False))
+    _, events = send(authed, WORD_REQUEST)
+    assert [a["status"] for a in actions_of(events)] == ["succeeded", "succeeded", "unavailable"]
+    final = tasks_of(events)[-1]
+    assert final["status"] == "TASK_PARTIALLY_COMPLETED"
+    assert [s["state"] for s in final["steps"]] == ["ACTION_COMPLETED", "ACTION_COMPLETED", "ACTION_FAILED"]
+    reply = reply_of(events)
+    assert reply.startswith("Task partially completed.") and "Saved the document" in reply
+    assert "Not done: show the document in Word." in reply and "not installed" in reply
+    assert list((tmp_path / "NOVA").glob("*.docx"))  # what was done is real and stated with its location
+
+
+def test_failed_step_stops_the_chain_and_later_steps_are_not_attempted(authed, provider, tmp_path, monkeypatch):
+    (tmp_path / "NOVA").write_text("a file where the folder should be")
+    fake = install_office(authed, tmp_path, monkeypatch)
+    _, events = send(authed, WORD_REQUEST)
+    finished = actions_of(events)
+    assert [(a["tool"], a["status"]) for a in finished] == [("activity_today", "succeeded"), ("word_document", "failed")]
+    assert "completion" not in finished[1]
+    final = tasks_of(events)[-1]
+    assert final["status"] == "TASK_PARTIALLY_COMPLETED"
+    assert [s["state"] for s in final["steps"]] == ["ACTION_COMPLETED", "ACTION_FAILED", "NOT_ATTEMPTED"]
+    reply = reply_of(events)
+    assert "Not done: write and save the Word document." in reply and "could not be saved" in reply
+    assert "Not attempted: show the document in Word." in reply
+    assert "Opened" not in reply and fake.launched == []  # Word was never opened on a document that does not exist
+
+
+def test_opening_word_alone_is_a_complete_task_only_when_that_was_the_request(authed, provider, tmp_path, monkeypatch):
+    recorder = Recorder(status="succeeded", message="Opened microsoft word.")
+    install_office(authed, tmp_path, monkeypatch, None, open_app_tool(recorder))
+    _, events = send(authed, "Hey NOVA, open Word.")
+    assert recorder.calls == [{"app": "word"}] and tasks_of(events)[-1]["status"] == "TASK_COMPLETED"
+    assert actions_of(events)[0]["completion"] == "ACTION_COMPLETED"
+
+
+def test_model_that_only_opens_word_is_told_the_task_is_not_finished(authed, provider, tmp_path, monkeypatch):
+    recorder = Recorder(status="succeeded", message="Opened microsoft word.")
+    fake = install_office(authed, tmp_path, monkeypatch, None, open_app_tool(recorder))
+    provider.tools_supported = True
+    provider.turns = [
+        [ToolCall("c1", "open_app", {"app": "word"})],
+        ["I opened Word and wrote your letter."],  # the claim the bug produced: nothing was written
+        [ToolCall("c2", "word_document", {"action": "create", "title": "Letter to the landlord",
+                                          "content": "Dear Sir,\n\nThe heating is broken.\n\n- Since Monday"})],
+        ["The letter is saved in your NOVA documents folder and open in Word."],
+    ]
+    _, events = send(authed, "Open Word and write a letter to my landlord about the heating.")
+    assert [(a["tool"], a["status"]) for a in actions_of(events)] == [("open_app", "succeeded"), ("word_document", "succeeded")]
+    assert tasks_of(events)[-1]["status"] == "TASK_COMPLETED"
+    assert (tmp_path / "NOVA" / "Letter to the landlord.docx").is_file() and len(fake.launched) == 1
+    nudges = [m for m in provider.calls[2]["messages"] if m.role == "user" and "task is not finished" in m.content]
+    assert len(nudges) == 1 and "word_document" in nudges[0].content  # told once, by NOVA, not left to chance
+    reply = reply_of(events)
+    assert "wrote your letter" not in reply  # the premature claim was never shown
+    assert reply == "The letter is saved in your NOVA documents folder and open in Word."
+
+
+def test_model_that_never_writes_the_document_cannot_pass_it_off_as_done(authed, provider, tmp_path, monkeypatch):
+    recorder = Recorder(status="succeeded", message="Opened microsoft word.")
+    install_office(authed, tmp_path, monkeypatch, None, open_app_tool(recorder))
+    provider.tools_supported = True
+    provider.turns = [[ToolCall("c1", "open_app", {"app": "word"})], ["Done, the letter is written."],
+                      ["Here is your letter: Dear Sir..."]]
+    _, events = send(authed, "Open Word and write a letter to my landlord about the heating.")
+    final = tasks_of(events)[-1]
+    assert final["status"] == "TASK_PARTIALLY_COMPLETED"
+    assert final["steps"] == [{"step": "open_app", "tool": "open_app", "state": "ACTION_COMPLETED"},
+                              {"step": "write and save the Word document", "tool": "word_document", "state": "NOT_ATTEMPTED"}]
+    reply = reply_of(events)
+    assert "no Word document was created or saved" in reply and "Done, the letter is written." not in reply
+    assert not (tmp_path / "NOVA").exists()
+
+
+def test_today_activity_is_the_owners_record_with_real_results(authed, provider, tmp_path, monkeypatch):
+    from datetime import timedelta
+
+    from app.models import Conversation, Message, User, utcnow
+    from app.services.activity import today_activity
+
+    recorder = Recorder(status="unverified", message="Spotify accepted the request, but NOVA could not confirm it.",
+                        verified=False)
+    install(authed, spotify(recorder))
+    provider.tools_supported = True
+    provider.turns = [[PLAY]]
+    send(authed)
+    with authed.app.state.nova.db.SessionLocal() as db:
+        owner = db.scalar(select(User))
+        stranger = User(username="other", display_name="Other", password_hash="x", is_owner=False)
+        db.add(stranger)
+        db.flush()
+        theirs = Conversation(owner_id=stranger.id, title="Private")
+        old = Conversation(owner_id=owner.id, title="Yesterday")
+        db.add_all([theirs, old])
+        db.flush()
+        db.add(Message(conversation_id=theirs.id, role="user", content="someone else's secret request"))
+        db.add(Message(conversation_id=old.id, role="user", content="an old request",
+                       created_at=utcnow() - timedelta(days=2)))
+        db.commit()
+        found = today_activity(db, owner.id)
+    assert found["requests"] == 1 and found["actions"] == 1 and found["unconfirmed"] == 1 and found["succeeded"] == 0
+    report = found["report"]
+    assert "open Spotify and play Tiakola" in report and "spotify_control: play_track, Vie de Pirate, Tiakola" in report
+    assert "Not confirmed. Spotify accepted the request" in report and "## Not completed" in report
+    assert "secret" not in report and "an old request" not in report

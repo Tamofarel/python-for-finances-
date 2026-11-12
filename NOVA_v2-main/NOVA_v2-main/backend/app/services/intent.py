@@ -25,7 +25,8 @@ from app.providers.base import ToolCall
 _ACTION = re.compile(
     r"\b(play|replay|pause|resume|unpause|stop|skip|next|previous|rewind|volume|louder|quieter|mute|unmute|open|"
     r"launch|start|close|quit|turn|switch|set|lock|unlock|dim|brighten|listen|put on|run|go to|navigate|visit|"
-    r"bring up|show me|find|search|summarize|inspect|browse|"
+    r"bring up|show me|find|search|summarize|inspect|browse|write|create|draft|report|save|"
+    r"redige|rediger|ecris|ecrire|cree|creer|enregistre|enregistrer|"
     r"joue|jouer|mets|mettre|lance|lancer|ouvre|ouvrir|ferme|fermer|allume|allumer|eteins|"
     r"eteindre|baisse|baisser|monte|monter|coupe|couper|suivant|precedent|verrouille|deverrouille|ecoute|ecouter)\b")
 _QUESTION = re.compile(r"^(how|what|why|when|where|who|which|explain|describe|define|tell me|compare|is|are|does|"
@@ -42,6 +43,15 @@ _WEB = {"website", "site", "page", "browser", "url", "link", "web", "navigateur"
 _FILE = {"file", "document", "pdf", "image", "photo", "picture", "fichier", "doc", "open"}
 _PROJECT = {"vscode", "vs", "code", "explorer", "folder", "project", "projet", "dossier", "editor"}
 _COMMAND = {"test", "tests", "build", "lint", "run", "command", "commande", "pytest", "npm", "check"}
+_DOCUMENT = {"word", "document", "documents", "doc", "docx", "report", "rapport", "letter", "lettre", "summary",
+             "resume", "recap", "notes", "note", "memo", "compte"}
+_ACTIVITY = {"today", "did", "done", "activity", "activities", "report", "summary", "recap", "history", "rapport",
+             "aujourd", "fait", "bilan", "resume"}
+_IN_WORD = {"word", "document", "docx", "doc"}
+_WRITE = {"write", "report", "create", "draft", "summarize", "summarise", "summary", "recap", "put", "insert", "save",
+          "type", "make", "prepare", "generate", "list", "redige", "ecris", "cree", "rapport", "resume", "bilan",
+          "enregistre"}
+_TODAY = re.compile(r"\btoday\b|\baujourd hui\b|\bwhat (?:we|i|you) (?:did|ve done|have done)\b|\bce qu on a fait\b")
 _APP_ALIASES = {"calculator": {"calculator", "calc", "calculatrice"}, "settings": {"settings", "parametres"},
                 "notepad": {"notepad", "bloc"}, "file explorer": {"explorer", "explorateur"}}
 _HOME_WORDS = {
@@ -81,6 +91,20 @@ def looks_like_action(text: str) -> bool:
     return not (_QUESTION.match(t) and not _POLITE.search(t))
 
 
+def needs_document(text: str) -> bool:
+    """True when the request asks for something to be written in a Word document (opening Word is not enough)."""
+    words = _words(text)
+    return bool(words & _IN_WORD) and bool(words & _WRITE)
+
+
+def document_task(text: str) -> str | None:
+    """"today_report" when the request is a written report of today's activity in a Word document."""
+    t = _WAKE.sub("", normalize(text))
+    if _QUESTION.match(t) and not _POLITE.search(t):
+        return None
+    return "today_report" if needs_document(text) and _TODAY.search(t) else None
+
+
 def grounded(tool: str, arguments: dict[str, Any], request: str) -> bool:
     """True when the request mentions what this tool would act on."""
     words = _words(request)
@@ -111,6 +135,10 @@ def grounded(tool: str, arguments: dict[str, Any], request: str) -> bool:
         return bool(words & (_FILE | stem))
     if tool == "open_project":
         return bool(words & _PROJECT)
+    if tool == "word_document":
+        return bool(words & _DOCUMENT)
+    if tool == "activity_today":
+        return bool(words & _ACTIVITY)
     if tool == "run_project_command":
         return bool(words & _COMMAND)
     if tool in ("home_status", "home_control"):
