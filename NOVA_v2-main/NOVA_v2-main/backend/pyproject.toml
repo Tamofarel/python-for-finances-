@@ -1,0 +1,28 @@
+[project]
+name = "nova-backend"
+version = "0.3.0"
+description = "NOVA personal AI assistant — backend"
+requires-python = ">=3.11"
+
+[tool.ruff]
+line-length = 130
+target-version = "py311"
+extend-exclude = ["migrations/versions"]
+
+[tool.ruff.lint]
+select = ["E", "F", "W", "I", "B", "UP", "S"]
+ignore = [
+  "B008",   # FastAPI Depends() in defaults is idiomatic
+  "S101",   # asserts are fine in tests and invariants
+  "S603",   # subprocess without shell: argv is validated against an allowlist
+  "UP017",
+]
+
+[tool.ruff.lint.per-file-ignores]
+"tests/*" = ["S", "E501"]
+"app/workflows/templates.py" = ["E501"]  # authored content strings
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+addopts = "-q"
+filterwarnings = ["ignore::DeprecationWarning"]

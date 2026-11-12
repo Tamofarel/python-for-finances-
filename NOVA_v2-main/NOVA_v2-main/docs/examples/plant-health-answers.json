@@ -1,0 +1,22 @@
+{
+  "_note": "Example answers used by scripts/demo_plant_health.py. They stand in for what an owner would say; edit them freely. They are the owner's decisions, not research findings.",
+  "idea": "I want to build an app that helps people determine whether their plants are healthy using their smartphone camera.",
+  "title": "Plant-health photo app",
+  "template": "auto",
+  "answers": {
+    "intent": "Yes, that's right. To be precise: it should point out visible symptoms and possible causes, not give a definitive diagnosis.",
+    "subject_scope": "Start with tomato plants grown by home gardeners and small market gardens; leaves only for the first version.",
+    "users": "Home gardeners and smallholders who notice spots or discoloured leaves and want a quick first opinion before buying treatments or asking an expert.",
+    "classes": "Healthy leaf, early blight, late blight, septoria leaf spot, leaf mould, bacterial spot. Anything else must come back as 'not recognised' rather than a forced guess.",
+    "dataset": "No proprietary images yet. We can collect about 1,500 field photos from partner gardens over two months; an agronomist will review labels on a 10% sample.",
+    "inference": "On-device inference so it works offline in the field; an optional cloud model later.",
+    "model": "Fine-tuning a small pretrained image model is acceptable if its licence allows commercial use and it stays under about 20 MB.",
+    "capture": "Mid-range Android phones from the last four years. Guide the user to photograph one leaf, in daylight, filling most of the frame.",
+    "uncertainty": "Below the confidence threshold, say 'can't tell from this photo', ask for another photo, and suggest contacting an agricultural extension officer.",
+    "privacy": "Photos stay on the phone by default. Sharing photos to improve the model is opt-in, with location removed.",
+    "backend": "No accounts in the first version. A small backend only for opt-in photo uploads.",
+    "validation": "Hold out photos from gardens not used for training, report per-class precision and recall, and have the agronomist review all errors on the most harmful classes.",
+    "success": "At least 80% of test users say the guidance helped them decide what to do next, and per-class recall above 0.8 on held-out field photos.",
+    "cost_connectivity": "It must work offline in the garden. Server costs should stay under about 50 euros per month for the first year."
+  }
+}

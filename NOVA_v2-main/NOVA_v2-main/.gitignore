@@ -1,0 +1,27 @@
+# secrets and local data
+.env
+data/
+*.db
+*.db-journal
+*.db-wal
+*.db-shm
+# python
+.venv/
+venv/
+__pycache__/
+*.pyc
+.pytest_cache/
+.ruff_cache/
+# node
+node_modules/
+frontend/dist/
+# release output
+release/
+*.zip
+# editors / OS
+.vscode/
+.idea/
+.DS_Store
+Thumbs.db
+e2e-shots/
+*.tsbuildinfo

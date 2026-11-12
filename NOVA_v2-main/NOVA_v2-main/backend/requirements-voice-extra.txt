@@ -1,0 +1,3 @@
+# Optional: better offline transcription with Vosk. Also download a model (about 40-50 MB) and set
+# NOVA_VOSK_MODEL_PATH to the unpacked folder. See docs/VOICE.md.
+vosk==0.3.45

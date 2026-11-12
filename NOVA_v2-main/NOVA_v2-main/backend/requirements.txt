@@ -1,0 +1,13 @@
+# NOVA backend runtime dependencies (pinned). Full transitive lock: requirements.lock
+fastapi==0.115.6
+uvicorn[standard]==0.34.0
+SQLAlchemy==2.0.36
+alembic==1.14.0
+pydantic==2.10.4
+pydantic-settings==2.7.0
+httpx==0.28.1
+argon2-cffi==23.1.0
+anthropic==1.15.0
+python-multipart==0.0.20
+# Local wake phrase and basic offline transcription (US-English model included, no download)
+pocketsphinx==5.0.4

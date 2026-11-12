@@ -1,0 +1,3 @@
+# Optional isolated visible browser support. Install Chromium separately with:
+# python -m playwright install chromium
+playwright>=1.48,<2
