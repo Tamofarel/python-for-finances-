@@ -157,6 +157,33 @@ def test_a_window_that_never_appears_is_not_reported_as_opened(tmp_path):
     assert opened.data["blocker"] == "window_not_seen" and str(tmp_path / "NOVA") in opened.message
 
 
+def test_a_slow_cold_start_of_word_is_waited_for(tmp_path):
+    """Live, Word took more than 15 s to show the document on a cold start: the wait must cover that."""
+    from app.tools import documents
+
+    class SlowWord(FakeWindows):
+        shown_at, title = float("inf"), ""  # nothing is shown before Word is asked to open the file
+
+        def launch(self, target: str) -> bool:
+            self.launched.append(target)
+            self.procs.add("winword.exe")
+            self.titles.append("Opening - Word")  # the splash screen, which is not the document
+            self.shown_at, self.title = time.monotonic() + 0.3, f"{Path(target).stem}  -  Compatibility Mode - Word"
+            return True
+
+        def windows(self) -> list[str]:
+            if time.monotonic() >= self.shown_at and self.title not in self.titles:
+                self.titles.append(self.title)
+            return super().windows()
+
+    assert documents.OPEN_WAIT_SECONDS >= 30
+    adapter, fake = word(tmp_path, SlowWord())
+    reg = registry(adapter)
+    reg.execute("word_document", {"action": "create", "title": "Daily report", "content": REPORT, "open_in_word": False}, ctx())
+    opened = reg.execute("word_document", {"action": "open", "filename": "Daily report"}, ctx(5))
+    assert opened.status == "succeeded" and opened.data["verified"] is True and len(fake.launched) == 1
+
+
 def test_existing_document_is_never_silently_overwritten(tmp_path):
     adapter, _ = word(tmp_path)
     reg = registry(adapter)

@@ -25,9 +25,9 @@ from urllib.parse import quote, urlencode
 
 import httpx
 
+from app.core.logging import redact, redact_text
 from app.tools import desktop_os
 from app.tools.registry import ToolContext
-from app.core.logging import redact, redact_text
 
 AUTH = "https://accounts.spotify.com/authorize"
 TOKEN = "https://accounts.spotify.com/api/token"  # noqa: S105 - OAuth endpoint, not a credential

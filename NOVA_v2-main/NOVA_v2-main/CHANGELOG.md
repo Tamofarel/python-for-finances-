@@ -12,6 +12,9 @@ Details: [docs/ACTIONS.md](docs/ACTIONS.md#spotify).
 - **“Open Word and report what we did today” only opened Word.** No tool could write a document, and one succeeded
   action ended the request. NOVA now reads today's records, writes and saves a Word document, reads the saved file
   back, shows it in Word and reports the file's location. Details: [docs/ACTIONS.md](docs/ACTIONS.md#word-documents-and-multi-step-tasks).
+- **A Word report was called “partially completed” when Word was slow to start** (found in the M0 live test,
+  2026-11-13). On a cold start Word showed the document after more than 15 s, the limit NOVA waited. The wait is now
+  30 s, still bounded by the tool's deadline. Details: [docs/M0_VALIDATION_REPORT.md](docs/M0_VALIDATION_REPORT.md).
 
 ### Changed
 - Spotify playback no longer needs `NOVA_DESKTOP_CONTROL_ENABLED`. With desktop control off, NOVA uses the Spotify

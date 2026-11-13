@@ -205,7 +205,8 @@ the chat. Three things were missing:
 **How Word is driven.** NOVA writes the .docx file with python-docx and opens it in Word. It does not type into
 Word's window and does not use COM automation (`pywin32`). The file is the result you asked for, it can be read
 back and compared with the request, and it does not depend on which window has the focus or on a dialog being open.
-What NOVA confirms about Word itself is that a Word window shows the document. COM would add editing of a document
+What NOVA confirms about Word itself is that a Word window shows the document; it waits up to 30 s for that window
+(a cold start of Word took more than 15 s in the live test of 2026-11-13). COM would add editing of a document
 that is already open in Word; that is not implemented.
 
 **Boundaries**

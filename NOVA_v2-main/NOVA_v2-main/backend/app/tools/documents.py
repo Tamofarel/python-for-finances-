@@ -41,7 +41,9 @@ NOT_WINDOWS = "Word documents are only available on Windows in this build."
 NO_LIBRARY = "The python-docx package is not installed (pip install -r backend/requirements.txt)."
 MAX_CONTENT = 20000
 MAX_READ = 6000
-OPEN_WAIT_SECONDS = 15.0  # a cold start of Word takes several seconds
+# A cold start of Word showed the document after more than 15 s on the owner's laptop (live test, 2026-11-13; a warm
+# start took 6 s). Giving up earlier reports a document that does open as "not seen". Bounded by the tool's deadline.
+OPEN_WAIT_SECONDS = 30.0
 _INVALID_NAME = re.compile(r'[<>:"/\\|?*\x00-\x1f]')
 _RESERVED = {"con", "prn", "aux", "nul", *(f"com{i}" for i in range(1, 10)), *(f"lpt{i}" for i in range(1, 10))}
 
