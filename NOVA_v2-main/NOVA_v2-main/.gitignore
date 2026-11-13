@@ -25,3 +25,6 @@ release/
 Thumbs.db
 e2e-shots/
 *.tsbuildinfo
+
+# hologram lab: local reference images that are not licensed for distribution
+frontend/hologram-assets/

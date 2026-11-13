@@ -1,0 +1,27 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>NOVA — Hologram lab</title>
+    <style>
+      html, body { height: 100%; margin: 0; }
+      body { background: var(--abyss); color: var(--text); font-family: var(--font); display: grid; grid-template-rows: 1fr auto; }
+      #stage { position: relative; min-height: 0; background: radial-gradient(ellipse at 50% 45%, #0d1a3a 0%, #070d1c 55%, #04070f 100%); }
+      :root[data-theme="light"] #stage { background: radial-gradient(ellipse at 50% 45%, #ffffff 0%, #eceff3 70%); }
+      #stage canvas { position: absolute; inset: 0; width: 100%; height: 100%; display: block; }
+      #label { position: absolute; left: 0; right: 0; bottom: 14px; text-align: center; font-size: 1.1rem; letter-spacing: 0.02em; }
+      #stats { position: absolute; top: 10px; left: 12px; font: 12px/1.5 var(--mono); color: var(--muted); white-space: pre; }
+      #panel { display: flex; flex-wrap: wrap; gap: 6px; padding: 10px 12px; background: var(--hull); border-top: 1px solid var(--seam); align-items: center; }
+      #panel button { font: inherit; font-size: 0.82rem; padding: 4px 10px; border-radius: 999px; border: 1px solid var(--seam); background: var(--deck); color: var(--text); cursor: pointer; }
+      #panel button[aria-pressed="true"] { border-color: var(--signal); color: var(--signal); }
+      #panel label { font-size: 0.8rem; color: var(--muted); display: inline-flex; gap: 6px; align-items: center; margin-left: 8px; }
+      body.bare #panel, body.bare #stats { display: none; }
+    </style>
+  </head>
+  <body>
+    <div id="stage"><canvas id="c"></canvas><div id="stats"></div><div id="label"></div></div>
+    <div id="panel"></div>
+    <script type="module" src="/src/hologram/holographic/lab.ts"></script>
+  </body>
+</html>

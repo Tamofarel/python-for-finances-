@@ -24,6 +24,8 @@ import { useVoice } from "../../store/voice";
 import { type FocusAction, IdeaFocus, focusSpeech, openQuestion } from "./IdeaFocus";
 import { ApprovalsPanel, EXAMPLE_IDEA, ProjectPanel, ReplyPanel, SuggestionChips, TasksPanel, WorkflowDocsPanel, activeTasks } from "./panels";
 import { InterruptButton, TalkButton } from "./VoiceControls";
+import { ExecutionPanel, hasExecution, runningActions } from "./ExecutionPanel";
+import { describeCall } from "../../components/ActionCard";
 
 const FOCUS_KEY = "nova.focusWorkflow";
 const CAPTION_LIMIT = 420;
@@ -76,6 +78,7 @@ export function CommandCenter() {
   const attachments = useAttachments();
   const lastVia = useRef<"text" | "voice">("text");
   const spokenFor = useRef<string>("");
+  const holoSpace = useRef<HTMLDivElement>(null);
 
   const suggestions = usePoll(() => (prefs.suggestions ? api.suggestions() : Promise.resolve([])), 10000, [prefs.suggestions]);
   const approvals = usePoll(() => api.actions.list("pending"), 5000);
@@ -253,7 +256,9 @@ export function CommandCenter() {
   const samples = useMemo(() => (voice.listening ? voice.samples : null), [voice.listening, voice.samples]);
   const asking = wf ? openQuestion(wf) : null;
 
+  const nowRunning = runningActions(lastNova?.actions)[0];
   const side = [
+    hasExecution(lastNova) && !wf && <ExecutionPanel key="x" message={lastNova} streaming={chat.streaming} />,
     pending.length > 0 && <ApprovalsPanel key="a" items={pending} onDecided={refreshAll} />,
     longReply && lastNova && chat.current && !wf && <ReplyPanel key="r" message={lastNova} conversationId={chat.current.id} />,
     wf && (wf.research.length > 0 || wf.stages.some((st) => st.artifacts.length > 0)) && <WorkflowDocsPanel key="w" workflow={wf} />,
@@ -265,12 +270,15 @@ export function CommandCenter() {
 
   return (
     <div className={`command ${side.length ? "has-side" : ""}`}>
+      {/* The hologram fills the command center behind everything and centres on the space reserved for it. */}
+      <HoloCore state={state} levelSource={levelSource} pulse={voice.boundaryPulse} focusRef={holoSpace} />
       <section className={`stage ${wf || longReply ? "compact" : ""}`} aria-label="NOVA">
-        <HoloCore state={state} levelSource={levelSource} pulse={voice.boundaryPulse} />
+        <div className="holo-space" ref={holoSpace} aria-hidden="true" />
         <div className="core-status" role="status" aria-live="polite">
           <strong className={`state-name state-${state}`}>{STATE_LABELS[state]}</strong>
           {state === "error" && errorText && <span className="state-detail">{errorText}</span>}
           {(state === "researching" || state === "designing") && detail && <span className="state-detail">{detail}</span>}
+          {state === "executing" && nowRunning && <span className="state-detail">{describeCall(nowRunning)}</span>}
           {state === "standby" && voice.mic !== "off" && <span className="state-detail">{micLabel(voice.mic, false, prefs.voice.wake_phrase)}</span>}
           {(state === "error" || state === "interrupted" || state === "cancelled") && (
             <button type="button" className="btn btn-ghost btn-xs" onClick={() => dispatchAssistant({ type: "DISMISS" })}>Dismiss</button>

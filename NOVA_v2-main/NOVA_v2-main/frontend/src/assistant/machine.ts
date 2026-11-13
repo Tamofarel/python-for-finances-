@@ -33,6 +33,7 @@ export interface AssistantContext {
   pendingApprovals: number;
   pendingQuestion: boolean; // a workflow question waits for an answer
   wakeArmed: boolean; // the local wake-phrase detector is listening for the wake phrase
+  acting: number; // tools running right now inside the current reply (observed from the stream's action events)
 }
 
 export type AssistantEvent =
@@ -56,6 +57,8 @@ export type AssistantEvent =
   | { type: "ERROR"; message: string }
   | { type: "DISMISS" }
   | { type: "AUTO_RETURN" } // a short display timeout after an interaction (never used to fake work)
+  | { type: "ACTION_START" } // a tool started inside the current reply
+  | { type: "ACTION_END" } // that tool finished (whatever its outcome)
   | { type: "CONTEXT"; patch: Partial<AssistantContext> };
 
 export type EventType = AssistantEvent["type"];
@@ -68,7 +71,7 @@ export interface MachineSnapshot {
 
 export const initialSnapshot: MachineSnapshot = {
   foreground: null,
-  context: { streaming: false, job: null, executing: 0, pendingApprovals: 0, pendingQuestion: false, wakeArmed: false },
+  context: { streaming: false, job: null, executing: 0, pendingApprovals: 0, pendingQuestion: false, wakeArmed: false, acting: 0 },
   error: null,
 };
 
@@ -116,7 +119,11 @@ export function ambientState(ctx: AssistantContext): AmbientState {
   return "standby";
 }
 
+const WORKING: ForegroundState[] = ["understanding", "thinking", "responding"];
+
 export function displayState(s: MachineSnapshot): AssistantState {
+  // While a tool runs inside the reply, NOVA is acting, not thinking.
+  if (s.context.acting > 0 && s.foreground && WORKING.includes(s.foreground)) return "executing";
   return s.foreground ?? ambientState(s.context);
 }
 
@@ -124,9 +131,11 @@ export function displayState(s: MachineSnapshot): AssistantState {
 export function transition(s: MachineSnapshot, event: AssistantEvent): MachineSnapshot {
   let context = s.context;
   if (event.type === "CONTEXT") return { ...s, context: { ...context, ...event.patch } };
-  if (event.type === "SEND") context = { ...context, streaming: true };
+  if (event.type === "ACTION_START") return { ...s, context: { ...context, acting: context.acting + 1 } };
+  if (event.type === "ACTION_END") return { ...s, context: { ...context, acting: Math.max(0, context.acting - 1) } };
+  if (event.type === "SEND") context = { ...context, streaming: true, acting: 0 };
   if (event.type === "STREAM_DONE" || event.type === "STREAM_ERROR" || event.type === "ABORTED") {
-    context = { ...context, streaming: false };
+    context = { ...context, streaming: false, acting: 0 };
   }
 
   const row = TRANSITIONS[s.foreground ?? "ambient"];
@@ -153,7 +162,7 @@ export const STATE_LABELS: Record<AssistantState, string> = {
   designing: "Designing",
   awaiting_user: "Waiting for your answer",
   awaiting_approval: "Awaiting your approval",
-  executing: "Running an approved action",
+  executing: "Executing",
   interrupted: "Interrupted",
   cancelled: "Cancelled",
   error: "Something went wrong",

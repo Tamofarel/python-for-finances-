@@ -539,7 +539,8 @@ details summary { cursor: pointer; color: var(--muted); font-size: 0.88rem; }
    0.2 — holographic command center, workflows and task board
    ===================================================================================================== */
 .shell.on-command main { overflow: hidden; }
-.command { display: grid; grid-template-columns: minmax(0, 1fr); height: 100%; min-height: 0; }
+.command { display: grid; grid-template-columns: minmax(0, 1fr); height: 100%; min-height: 0; position: relative; isolation: isolate; }
+.command > .stage, .command > .context { position: relative; z-index: 1; }
 .command.has-side { grid-template-columns: minmax(0, 1fr) minmax(280px, 340px); }
 .stage { display: flex; flex-direction: column; align-items: center; min-height: 0; padding: var(--s4) var(--s5) var(--s5); gap: var(--s3); overflow-y: auto; }
 .context { display: flex; flex-direction: column; gap: var(--s3); padding: var(--s5) var(--s5) var(--s5) 0; overflow-y: auto; min-height: 0; }
@@ -554,6 +555,14 @@ details summary { cursor: pointer; color: var(--muted); font-size: 0.88rem; }
 }
 @keyframes panel-in { from { opacity: 0; transform: translateY(4px); } }
 .holo-panel.attention { border-color: rgb(var(--warn-rgb) / 0.5); }
+.exec-steps { list-style: none; margin: 0 0 var(--s2); padding: 0; display: flex; flex-direction: column; gap: 4px; }
+.exec-step { display: grid; grid-template-columns: 16px 1fr auto; gap: 8px; align-items: center; font-size: 0.88rem; }
+.exec-step svg { color: var(--muted); }
+.exec-running svg { color: var(--signal); }
+.exec-action_completed svg { color: var(--ok); }
+.exec-action_failed svg { color: var(--danger); }
+.exec-waiting svg { color: var(--warn); }
+.exec-step-label { min-width: 0; overflow-wrap: anywhere; }
 .holo-panel header { display: flex; align-items: center; gap: 8px; margin-bottom: var(--s2); }
 .holo-panel header h2 { font-size: 0.92rem; flex: 1; font-weight: 600; }
 .holo-panel-icon { color: var(--signal); display: inline-flex; }
@@ -568,8 +577,12 @@ details summary { cursor: pointer; color: var(--muted); font-size: 0.88rem; }
 .clamp-3 { display: -webkit-box; -webkit-line-clamp: 3; -webkit-box-orient: vertical; overflow: hidden; }
 
 /* The core */
-.holo-core { position: relative; width: min(100%, 620px); height: clamp(220px, 44vh, 500px); flex: none; }
+/* Holographic Core 2.0: the scene covers the whole command center behind the content and centres on .holo-space. */
+.holo-core { position: absolute; inset: 0; z-index: 0; overflow: hidden; pointer-events: none; }
 .holo-core canvas { position: absolute; inset: 0; width: 100%; height: 100%; display: block; }
+.holo-space { width: 100%; height: clamp(240px, 56vh, 680px); flex: none; }
+.holo-fallback { position: absolute; left: 50%; top: 16px; width: min(100%, 620px); height: clamp(220px, 44vh, 500px); transform: none; }
+.holo-fallback:not([style]) { transform: translateX(-50%); }
 .core-status { display: flex; align-items: baseline; gap: var(--s3); flex-wrap: wrap; justify-content: center; min-height: 1.8em; text-align: center; margin-top: calc(-1 * var(--s3)); }
 .state-name { font-size: 1.3rem; font-weight: 560; letter-spacing: -0.005em; color: var(--text); transition: color 300ms; }
 .state-listening, .state-wake_detected, .state-transcribing { color: var(--signal); }
@@ -617,8 +630,10 @@ details summary { cursor: pointer; color: var(--muted); font-size: 0.88rem; }
 /* Input dock */
 .dock { width: min(680px, 100%); display: flex; flex-direction: column; gap: var(--s2); flex: none; margin-top: auto;
   position: sticky; bottom: 0; padding-top: var(--s3); background: linear-gradient(to top, var(--abyss) 75%, transparent); }
+/* The hologram's environment is the background now; the input itself stays opaque and readable. */
+.command .dock { background: none; }
 /* With an idea in focus or a long reply, the core steps back so the conversation and the input stay in view. */
-.stage.compact .holo-core { height: clamp(150px, 26vh, 300px); }
+.stage.compact .holo-space { height: clamp(170px, 30vh, 340px); }
 .command-input { display: flex; align-items: center; gap: 4px; padding: 5px 5px 5px 8px; border-radius: 999px; background: var(--deck); border: 1px solid var(--seam); box-shadow: var(--glass-shadow); }
 .command-input:focus-within { border-color: var(--signal); box-shadow: 0 0 0 3px rgb(var(--signal-rgb) / 0.14); }
 .command-input input { border: 0; background: transparent; box-shadow: none; padding: 8px 6px; font-size: 1rem; }
@@ -763,7 +778,7 @@ kbd { font-family: var(--mono); font-size: 0.72rem; border: 1px solid var(--seam
 @media (max-width: 860px) {
   .stage { padding: var(--s2) var(--s4) var(--s4); }
   .context { padding: 0 var(--s4) var(--s4); }
-  .holo-core { height: clamp(200px, 34vh, 320px); }
+  .holo-space { height: clamp(220px, 42vh, 380px); }
   .board { grid-template-columns: minmax(0, 1fr); }
   .caption-nova { max-height: none; }
   .settings-layout { grid-template-columns: minmax(0, 1fr); gap: var(--s4); }

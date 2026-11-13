@@ -49,6 +49,15 @@ export interface Message {
   created_at: string;
   attachments?: Attachment[];
   actions?: ActionRecord[] | null;
+  task?: TaskState | null; // the request's outcome as a task, from the stream's "task" event (not stored by the backend)
+}
+
+/** A request NOVA carried out as a task: its steps and their real states (SSE "task" event). */
+export type TaskOutcome = "TASK_IN_PROGRESS" | "TASK_COMPLETED" | "TASK_PARTIALLY_COMPLETED" | "TASK_FAILED";
+export type TaskStepState = "PENDING" | "ACTION_COMPLETED" | "ACTION_FAILED" | "NOT_ATTEMPTED";
+export interface TaskState {
+  status: TaskOutcome;
+  steps: { step: string; tool: string; state: TaskStepState }[];
 }
 
 /** succeeded: done (and verified where the integration can verify) · unverified: accepted but not confirmed. */

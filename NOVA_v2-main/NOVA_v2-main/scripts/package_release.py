@@ -30,7 +30,8 @@ ROOT = Path(__file__).resolve().parents[1]
 ARCHIVE_NAME = "NOVA-Personal-AI-Assistant.zip"
 
 EXCLUDE_DIRS = {".git", "node_modules", ".venv", "venv", "__pycache__", ".pytest_cache", ".ruff_cache",
-                ".mypy_cache", "data", "release", ".idea", ".vscode", "coverage", "e2e-shots", "test-results"}
+                ".mypy_cache", "data", "release", ".idea", ".vscode", "coverage", "e2e-shots", "test-results",
+                "hologram-assets"}  # local reference images, not licensed for distribution
 EXCLUDE_FILES = [".env", ".env.local", ".env.*.local", "*.db", "*.db-*", "*.sqlite", "*.log", "*.pyc", "*.zip",
                  ".DS_Store", "Thumbs.db", "*.nova-tmp", "*.pem", "*.key", "*.tsbuildinfo"]
 ESSENTIAL = ["README.md", "LICENSE", "CHANGELOG.md", "RELEASE_NOTES.md", ".env.example", ".gitignore",

@@ -38,8 +38,7 @@ import type {
   WorkStatus,
   WorkflowDetail,
   WorkflowSummary,
-  WorkflowTemplate,
-} from "./types";
+  WorkflowTemplate, TaskState } from "./types";
 
 export class ApiError extends Error {
   constructor(
@@ -145,6 +144,7 @@ export interface StreamHandlers {
   onError?: (data: { message: string; kind: string; retryable: boolean }) => void;
   onDone?: (message: Message) => void;
   onAction?: (action: ActionRecord) => void; // a tool NOVA started or finished for this reply
+  onTask?: (task: TaskState) => void; // the request's steps and their states, as the backend reports them
 }
 
 export async function streamPost(path: string, body: unknown, handlers: StreamHandlers, signal: AbortSignal): Promise<void> {
@@ -198,6 +198,7 @@ export function dispatch(block: string, h: StreamHandlers): void {
   else if (event === "error") h.onError?.(parsed);
   else if (event === "done") h.onDone?.(parsed.message);
   else if (event === "action") h.onAction?.(parsed);
+  else if (event === "task") h.onTask?.(parsed);
 }
 
 // ---- endpoint helpers ------------------------------------------------------------------------

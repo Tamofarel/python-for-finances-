@@ -1,6 +1,7 @@
-import { useEffect, useRef, useState } from "react";
+import { memo, type RefObject, useEffect, useRef, useState } from "react";
 import { type AssistantState, STATE_LABELS } from "../assistant/machine";
 import { useReducedMotion, useResolvedTheme } from "../store/prefs";
+import type { HolographicScene } from "./holographic/HolographicScene";
 
 export function hasWebGL(): boolean {
   try {
@@ -31,18 +32,28 @@ export function FallbackCore({ state }: { state: AssistantState }) {
   );
 }
 
+interface Focus { left: number; top: number; width: number; height: number }
+
 interface Props {
   state: AssistantState;
   levelSource: (() => number) | null;
   pulse: number;
+  /** The element the hologram centres on and fills (it sits behind the page; the rest is environment). */
+  focusRef?: RefObject<HTMLElement | null>;
 }
 
-/** The central holographic core: WebGL (three.js, lazy-loaded) with an SVG fallback. */
-export function HoloCore({ state, levelSource, pulse }: Props) {
+/**
+ * NOVA's holographic presence (Holographic Core 2.0): the energy core that becomes an avatar, drawn by three.js
+ * behind the command center, with an SVG fallback. Driven only by the real assistant state, the real microphone
+ * level and real speech word boundaries.
+ */
+// Memoised: the command center re-renders on every streamed token; the hologram only cares about its own props.
+export const HoloCore = memo(function HoloCore({ state, levelSource, pulse, focusRef }: Props) {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const wrapRef = useRef<HTMLDivElement>(null);
-  const sceneRef = useRef<import("./CoreScene").CoreScene | null>(null);
+  const sceneRef = useRef<HolographicScene | null>(null);
   const [mode, setMode] = useState<"loading" | "webgl" | "fallback">(() => (hasWebGL() ? "loading" : "fallback"));
+  const [focus, setFocus] = useState<Focus | null>(null);
   const theme = useResolvedTheme();
   const reducedMotion = useReducedMotion();
 
@@ -50,11 +61,13 @@ export function HoloCore({ state, levelSource, pulse }: Props) {
     if (mode !== "loading") return;
     let disposed = false;
     let ro: ResizeObserver | null = null;
-    import("./CoreScene")
-      .then(({ CoreScene }) => {
+    Promise.all([import("./holographic/HolographicScene"), import("./holographic/PortraitAvatar")])
+      .then(([{ HolographicScene }, { LAB_PORTRAIT }]) => {
         if (disposed || !canvasRef.current || !wrapRef.current) return;
         const lowPower = (navigator.hardwareConcurrency ?? 4) <= 4 || window.innerWidth < 700;
-        const scene = new CoreScene(canvasRef.current, { reducedMotion, lowPower, theme });
+        // The portrait form is used when its image is available on this machine (frontend/hologram-assets/,
+        // never distributed); otherwise the scene keeps the line-art figure.
+        const scene = new HolographicScene(canvasRef.current, { reducedMotion, lowPower, theme, backdrop: true, portrait: LAB_PORTRAIT });
         sceneRef.current = scene;
         const fit = () => scene.resize(wrapRef.current!.clientWidth, wrapRef.current!.clientHeight);
         ro = new ResizeObserver(fit);
@@ -72,6 +85,34 @@ export function HoloCore({ state, levelSource, pulse }: Props) {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
+  // Follow the focus element (layout changes, resizing, scrolling of the stage).
+  useEffect(() => {
+    const wrap = wrapRef.current;
+    const target = focusRef?.current;
+    if (!wrap || !target || typeof ResizeObserver === "undefined") return;
+    const measure = () => {
+      const a = wrap.getBoundingClientRect();
+      const b = target.getBoundingClientRect();
+      const f = { left: b.left - a.left, top: b.top - a.top, width: b.width, height: b.height };
+      setFocus((p) => (p && Math.abs(p.left - f.left) + Math.abs(p.top - f.top) + Math.abs(p.width - f.width) + Math.abs(p.height - f.height) < 1 ? p : f));
+    };
+    measure();
+    const ro = new ResizeObserver(measure);
+    ro.observe(wrap);
+    ro.observe(target);
+    const scroller = target.closest(".stage");
+    scroller?.addEventListener("scroll", measure, { passive: true });
+    window.addEventListener("resize", measure);
+    return () => {
+      ro.disconnect();
+      scroller?.removeEventListener("scroll", measure);
+      window.removeEventListener("resize", measure);
+    };
+  }, [focusRef, mode]);
+
+  useEffect(() => {
+    if (focus) sceneRef.current?.setFocus(focus.left, focus.top, focus.width, focus.height);
+  }, [focus, mode]);
   useEffect(() => sceneRef.current?.setState(state), [state, mode]);
   useEffect(() => sceneRef.current?.setTheme(theme), [theme, mode]);
   useEffect(() => sceneRef.current?.setReducedMotion(reducedMotion), [reducedMotion, mode]);
@@ -83,10 +124,12 @@ export function HoloCore({ state, levelSource, pulse }: Props) {
   return (
     <div className={`holo-core holo-${state}`} ref={wrapRef}>
       {mode === "fallback" ? (
-        <FallbackCore state={state} />
+        <div className="holo-fallback" style={focus ? { left: focus.left, top: focus.top, width: focus.width, height: focus.height } : undefined}>
+          <FallbackCore state={state} />
+        </div>
       ) : (
         <canvas ref={canvasRef} role="img" aria-label={`NOVA: ${STATE_LABELS[state]}`} />
       )}
     </div>
   );
-}
+});

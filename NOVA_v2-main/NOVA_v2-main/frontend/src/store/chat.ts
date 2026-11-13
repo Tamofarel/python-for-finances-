@@ -3,7 +3,7 @@
 
 import { create } from "zustand";
 import { api, ApiError, streamPost } from "../api/client";
-import type { ActionRecord, Conversation, ConversationDetail, Message } from "../api/types";
+import type { ActionRecord, Conversation, ConversationDetail, Message, TaskState } from "../api/types";
 
 export type Presence = "idle" | "thinking" | "streaming" | "listening" | "speaking";
 
@@ -39,6 +39,7 @@ export type ChatStreamEvent =
   | { type: "send" }
   | { type: "start" }
   | { type: "action"; action: ActionRecord } // a tool NOVA started or finished, with its real result
+  | { type: "task"; task: TaskState } // the request's steps and their real states
   | { type: "delta"; text: string; first: boolean }
   | { type: "error"; message: string }
   | { type: "aborted" }
@@ -113,6 +114,11 @@ export const useChat = create<ChatState>((set, get) => {
           }
           emit({ type: "action", action });
         },
+        onTask: (task) => {
+          const c = get().current;
+          if (c) set({ current: patchLast(c, (m) => ({ ...m, task })) });
+          emit({ type: "task", task });
+        },
         onError: (d) => {
           const c = get().current;
           set({ streamError: { message: d.message, retryable: d.retryable } });
@@ -122,7 +128,8 @@ export const useChat = create<ChatState>((set, get) => {
         },
         onDone: (msg) => {
           const c = get().current;
-          if (c) set({ current: patchLast(c, () => msg) });
+          // The stored message does not carry the task outcome: keep the one the stream reported.
+          if (c) set({ current: patchLast(c, (m) => ({ ...msg, task: msg.task ?? m.task ?? null })) });
         },
       }, controller.signal);
       if (controller.signal.aborted) {

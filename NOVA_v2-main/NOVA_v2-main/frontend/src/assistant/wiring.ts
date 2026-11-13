@@ -36,6 +36,7 @@ export function useAssistantWiring(pollMs = 4000): void {
       if (e.type === "send") dispatchAssistant({ type: "SEND" });
       else if (e.type === "start") dispatchAssistant({ type: "ACCEPTED" });
       else if (e.type === "delta" && e.first) dispatchAssistant({ type: "FIRST_DELTA" });
+      else if (e.type === "action") dispatchAssistant({ type: e.action.phase === "started" ? "ACTION_START" : "ACTION_END" });
       else if (e.type === "error") dispatchAssistant({ type: "STREAM_ERROR", message: e.message });
       else if (e.type === "aborted") dispatchAssistant({ type: "ABORTED" });
       else if (e.type === "end" && e.outcome === "done") dispatchAssistant({ type: "STREAM_DONE" });
